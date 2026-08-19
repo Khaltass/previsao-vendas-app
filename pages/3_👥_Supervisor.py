@@ -3,7 +3,7 @@ import streamlit as st
 
 from db import init_db, now_iso
 from models import is_deviation, redistribute_proportional
-from ui_helpers import filter_dataframe, fmt_milhar
+from ui_helpers import filter_dataframe, fmt_milhar, fill_label, fill_caption
 
 conn = st.session_state.get("conn") or init_db()
 st.session_state["conn"] = conn
@@ -22,7 +22,7 @@ if _flash:
     st.success(_flash)
 
 volumes = pd.read_sql_query(
-    "SELECT chave, cliente_nome, grupo_descricao, produto_codigo, produto_descricao, "
+    "SELECT chave, cliente_nome, regional_descricao, grupo_descricao, produto_codigo, produto_descricao, "
     "vendedor_codigo, vendedor_nome, media_3m, media_6m, minimo, maximo, ultimo_mes "
     "FROM volumes WHERE supervisor_nome = ?",
     conn, params=(supervisor_nome,),
@@ -30,6 +30,61 @@ volumes = pd.read_sql_query(
 if volumes.empty:
     st.info("Nenhum dado encontrado para este supervisor.")
     st.stop()
+
+regional_descricao = volumes["regional_descricao"].iloc[0]
+
+st.subheader("Status da equipe")
+
+vend_status = pd.read_sql_query(
+    "SELECT scope_codigo AS vendedor_codigo, enviado, enviado_em "
+    "FROM submission_status WHERE level = 'vendedor'",
+    conn,
+)
+equipe = volumes[["vendedor_codigo", "vendedor_nome"]].drop_duplicates().sort_values("vendedor_nome")
+equipe = equipe.merge(vend_status, on="vendedor_codigo", how="left")
+equipe["enviado"] = equipe["enviado"].fillna(0).astype(int)
+
+total_vend = len(equipe)
+enviaram = int(equipe["enviado"].sum())
+
+sup_own = conn.execute(
+    "SELECT enviado, enviado_em FROM submission_status WHERE level = 'supervisor' AND scope_codigo = ?",
+    (supervisor_nome,),
+).fetchone()
+
+col_equipe, col_validar = st.columns([3, 1])
+with col_equipe:
+    st.metric("Vendedores que já enviaram", f"{enviaram} de {total_vend}")
+    equipe_display = equipe.rename(columns={
+        "vendedor_nome": "Vendedor", "vendedor_codigo": "Cód.", "enviado_em": "Enviado em",
+    })
+    equipe_display["Enviado"] = equipe_display["enviado"].map({1: "✅ Sim", 0: "❌ Não"})
+    st.dataframe(
+        equipe_display[["Vendedor", "Cód.", "Enviado", "Enviado em"]],
+        use_container_width=True, hide_index=True,
+    )
+with col_validar:
+    st.write("")
+    if sup_own and sup_own["enviado"]:
+        st.success(f"Sua validação foi enviada em {sup_own['enviado_em']}.")
+    else:
+        st.warning("Você ainda não validou a previsão da equipe para o Gerente.")
+    if st.button("✅ Validar e enviar ao Gerente", key="validar_supervisor", type="primary"):
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO submission_status "
+            "(level, scope_codigo, scope_nome, parent_scope, enviado, enviado_em, enviado_por, status_aprovacao) "
+            "VALUES ('supervisor', ?, ?, ?, 1, ?, ?, 'Pendente') "
+            "ON CONFLICT(level, scope_codigo) DO UPDATE SET "
+            "enviado = 1, enviado_em = excluded.enviado_em, enviado_por = excluded.enviado_por, "
+            "status_aprovacao = 'Pendente', aprovado_por = NULL, aprovado_em = NULL",
+            (supervisor_nome, supervisor_nome, regional_descricao, now_iso(), supervisor_nome),
+        )
+        conn.commit()
+        st.session_state["flash_msg"] = "Validação enviada ao Gerente Regional."
+        st.rerun()
+
+st.divider()
 
 proj = pd.read_sql_query(
     "SELECT chave, produto_codigo, month_index, month_label, current_value, vendor_value, last_changed_level "
@@ -68,8 +123,37 @@ for c in numeric_cols:
     total_row[c] = combined[c].sum()
 combined_display = pd.concat([combined, pd.DataFrame([total_row])], ignore_index=True)
 
+month_cols_present = [m for m in month_order if m in combined.columns]
+with st.container(border=True):
+    st.markdown("**Total da equipe (todos os clientes)**")
+    tot_cols = st.columns(len(month_cols_present) + 1)
+    tot_cols[0].metric("Total geral", fmt_milhar(combined[month_cols_present].sum().sum()) if month_cols_present else "-")
+    for i, m in enumerate(month_cols_present):
+        tot_cols[i + 1].metric(m, fmt_milhar(combined[m].sum()))
+
 st.dataframe(
     combined_display.style.format({c: fmt_milhar for c in numeric_cols}, na_rep="-"),
+    use_container_width=True, hide_index=True,
+)
+
+st.divider()
+st.subheader("Resumo por vendedor")
+vend_options_df = volumes[["vendedor_codigo", "vendedor_nome"]].drop_duplicates().sort_values("vendedor_nome")
+vend_options = vend_options_df.apply(lambda r: f"{r['vendedor_nome']} ({r['vendedor_codigo']})", axis=1).tolist()
+vend_escolha = st.selectbox("Selecione um vendedor para ver o resumo", vend_options, key="resumo_vendedor_sel")
+vend_codigo_escolha = vend_options_df.iloc[vend_options.index(vend_escolha)]["vendedor_codigo"]
+
+merged_vend = merged[merged["vendedor_codigo"] == vend_codigo_escolha]
+pivot_vend = merged_vend.pivot_table(
+    index=group_col, columns="month_label", values="current_value", aggfunc="sum", fill_value=0
+)
+month_cols_vend = [m for m in month_order if m in pivot_vend.columns]
+pivot_vend = pivot_vend.reindex(columns=month_cols_vend)
+total_vend_kg = pivot_vend[month_cols_vend].sum().sum() if month_cols_vend else 0
+
+st.metric(f"Total de {vend_escolha}", fmt_milhar(total_vend_kg))
+st.dataframe(
+    pivot_vend.reset_index().style.format({c: fmt_milhar for c in month_cols_vend}, na_rep="-"),
     use_container_width=True, hide_index=True,
 )
 
@@ -115,9 +199,10 @@ else:
     for _c in ["Média 3M", "Média 6M", "Mínimo", "Máximo", "Último Mês"]:
         table_display[_c] = table_display[_c].apply(lambda v: fmt_milhar(v, 1))
     disabled_cols = [c for c in table_display.columns if c not in month_cols]
-    desvio_column_config = {m: st.column_config.NumberColumn(format="%.1f") for m in month_cols}
+    desvio_column_config = {m: st.column_config.NumberColumn(fill_label(m), format="%.1f") for m in month_cols}
 
     st.caption(f"{len(table_display)} linha(s) com projeção mais de 10% abaixo do Último Mês. Edite diretamente na tabela para revisar linha a linha.")
+    fill_caption()
     table_display = filter_dataframe(table_display, key="filtro_desvios_supervisor")
     edited_desvio = st.data_editor(
         table_display, use_container_width=True, hide_index=True,
@@ -230,7 +315,7 @@ with tab1:
     mes_sel = st.selectbox("Mês", grid["month_label"].tolist(), key="t1_mes")
     grid_row = grid[grid["month_label"] == mes_sel].iloc[0]
     st.metric("Valor atual", f"{grid_row['current_value']:.0f} kg")
-    novo_valor = st.number_input("Novo valor (kg)", min_value=0.0, value=float(grid_row["current_value"]), key="t1_valor")
+    novo_valor = st.number_input(fill_label("Novo valor (kg)"), min_value=0.0, value=float(grid_row["current_value"]), key="t1_valor")
     if st.button("Aplicar ajuste", key="t1_apply"):
         cur = conn.cursor()
         cur.execute(
@@ -256,7 +341,7 @@ with tab2:
     total_atual = scope_rows["current_value"].sum()
     st.metric(f"Total atual alocado em {mes_sel2}", f"{total_atual:.0f} kg")
 
-    novo_total = st.number_input("Novo total (kg)", min_value=0.0, value=float(total_atual), key="t2_total")
+    novo_total = st.number_input(fill_label("Novo total (kg)"), min_value=0.0, value=float(total_atual), key="t2_total")
     if st.button("Redistribuir proporcionalmente", key="t2_apply"):
         rows_for_redist = [
             {"key": (r["chave"], r["produto_codigo"], r["month_index"]), "value": r["current_value"]}
@@ -291,7 +376,7 @@ with tab3:
         prod_options = produtos.apply(lambda r: f"{r['produto_descricao']} ({r['produto_codigo']})", axis=1).tolist()
         produto_manual = st.selectbox("SKU", prod_options) if prod_options else None
         mes_manual = st.selectbox("Mês", month_order, key="t3_mes")
-        valor_manual = st.number_input("Valor (kg)", min_value=0.0, value=0.0, key="t3_valor")
+        valor_manual = st.number_input(fill_label("Valor (kg)"), min_value=0.0, value=0.0, key="t3_valor")
         nota_manual = st.text_area("Nota / justificativa")
         submitted = st.form_submit_button("Adicionar ajuste manual")
         if submitted:

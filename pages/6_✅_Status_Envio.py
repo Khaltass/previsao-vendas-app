@@ -2,7 +2,7 @@ import pandas as pd
 import streamlit as st
 
 from db import init_db, has_data, now_iso
-from ui_helpers import filter_dataframe, fmt_milhar
+from ui_helpers import filter_dataframe, fmt_milhar, fill_label, fill_caption
 
 conn = st.session_state.get("conn") or init_db()
 st.session_state["conn"] = conn
@@ -96,12 +96,15 @@ else:
 
     if is_supervisor:
         st.caption("Marque o status de aprovação de cada vendedor da sua equipe e salve.")
+        fill_caption()
         vend_view = filter_dataframe(vend_display, key="filtro_status_vendedor")
         edited_vend = st.data_editor(
             vend_view, use_container_width=True, hide_index=True,
             disabled=[c for c in vend_view.columns if c != "Status Supervisor"],
             column_config={
-                "Status Supervisor": st.column_config.SelectboxColumn(options=["Pendente", "Aprovado", "Reprovado"]),
+                "Status Supervisor": st.column_config.SelectboxColumn(
+                    fill_label("Status Supervisor"), options=["Pendente", "Aprovado", "Reprovado"]
+                ),
             },
             key="status_editor_vendedor",
         )
@@ -146,12 +149,15 @@ if is_gerente:
     ]
     for _c in ["Vendedores (total)", "Enviaram", "Aprovados pelo Supervisor"]:
         sup_display[_c] = sup_display[_c].apply(fmt_milhar)
+    fill_caption()
     sup_view = filter_dataframe(sup_display, key="filtro_status_supervisor")
     edited_sup = st.data_editor(
         sup_view, use_container_width=True, hide_index=True,
         disabled=[c for c in sup_view.columns if c != "Status Gerente"],
         column_config={
-            "Status Gerente": st.column_config.SelectboxColumn(options=["Pendente", "Aprovado", "Reprovado"]),
+            "Status Gerente": st.column_config.SelectboxColumn(
+                fill_label("Status Gerente"), options=["Pendente", "Aprovado", "Reprovado"]
+            ),
         },
         key="status_editor_supervisor",
     )

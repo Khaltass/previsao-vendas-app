@@ -64,8 +64,13 @@ group_by = st.multiselect(
     default=["Família", "SKU"],
 )
 if group_by:
+    # "SKU" sempre traz o código do produto junto com a descrição.
+    group_by_cols = []
+    for g in group_by:
+        group_by_cols.extend(["Cód. SKU", "SKU"] if g == "SKU" else [g])
+
     totals = detalhe_display.pivot_table(
-        index=group_by, columns="Mês", values="Volume (kg)", aggfunc="sum", fill_value=0.0
+        index=group_by_cols, columns="Mês", values="Volume (kg)", aggfunc="sum", fill_value=0.0
     )
     month_cols_sorted = sorted(totals.columns, key=lambda m: month_order_map.get(m, 9999))
     totals = totals.reindex(columns=month_cols_sorted)
@@ -75,7 +80,7 @@ if group_by:
     totals_view = filter_dataframe(totals, key="filtro_totais")
 
     total_row = {c: "" for c in totals_view.columns}
-    total_row[group_by[0]] = "Total geral"
+    total_row[group_by_cols[0]] = "Total geral"
     for m in numeric_totais_cols:
         total_row[m] = totals_view[m].sum()
     totals_display = pd.concat([totals_view, pd.DataFrame([total_row])], ignore_index=True)
@@ -123,7 +128,7 @@ for _, rrow in regional_agg.iterrows():
         view_by_regional = st.radio(
             "Visualizar por", ["Família", "SKU"], horizontal=True, key=f"viewby_regional_{regional}"
         )
-        group_col_regional = view_by_regional
+        group_col_regional = ["Cód. SKU", "SKU"] if view_by_regional == "SKU" else [view_by_regional]
 
         pivot_regional = sub_regional.pivot_table(
             index=group_col_regional, columns="Mês", values="Volume (kg)", aggfunc="sum", fill_value=0.0
@@ -132,7 +137,7 @@ for _, rrow in regional_agg.iterrows():
         pivot_regional = pivot_regional.reindex(columns=month_cols_regional).reset_index()
 
         total_row_regional = {c: "" for c in pivot_regional.columns}
-        total_row_regional[group_col_regional] = "Total geral"
+        total_row_regional[group_col_regional[0]] = "Total geral"
         for m in month_cols_regional:
             total_row_regional[m] = pivot_regional[m].sum()
         pivot_regional_display = pd.concat([pivot_regional, pd.DataFrame([total_row_regional])], ignore_index=True)
@@ -153,7 +158,7 @@ with pd.ExcelWriter(xlsx_buffer, engine="xlsxwriter") as writer:
     detalhe_display.to_excel(writer, index=False, sheet_name="Consolidacao")
     if group_by:
         export_total_row = {c: "" for c in totals.columns}
-        export_total_row[group_by[0]] = "Total geral"
+        export_total_row[group_by_cols[0]] = "Total geral"
         for m in numeric_totais_cols:
             export_total_row[m] = totals[m].sum()
         totals_export = pd.concat([totals, pd.DataFrame([export_total_row])], ignore_index=True)

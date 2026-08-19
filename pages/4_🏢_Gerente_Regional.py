@@ -3,7 +3,7 @@ import streamlit as st
 
 from db import init_db, now_iso
 from models import is_deviation, redistribute_proportional
-from ui_helpers import filter_dataframe, fmt_milhar
+from ui_helpers import filter_dataframe, fmt_milhar, fill_label, fill_caption
 
 conn = st.session_state.get("conn") or init_db()
 st.session_state["conn"] = conn
@@ -30,6 +30,30 @@ volumes = pd.read_sql_query(
 if volumes.empty:
     st.info("Nenhum dado encontrado para esta regional.")
     st.stop()
+
+st.subheader("Validação dos supervisores")
+
+sup_status = pd.read_sql_query(
+    "SELECT scope_codigo AS supervisor_nome, enviado, enviado_em "
+    "FROM submission_status WHERE level = 'supervisor'",
+    conn,
+)
+supervisores = volumes[["supervisor_nome"]].drop_duplicates().sort_values("supervisor_nome")
+supervisores = supervisores.merge(sup_status, on="supervisor_nome", how="left")
+supervisores["enviado"] = supervisores["enviado"].fillna(0).astype(int)
+
+total_sup = len(supervisores)
+validaram_sup = int(supervisores["enviado"].sum())
+
+st.metric("Supervisores que já validaram", f"{validaram_sup} de {total_sup}")
+sup_display = supervisores.rename(columns={"supervisor_nome": "Supervisor", "enviado_em": "Validado em"})
+sup_display["Validado"] = sup_display["enviado"].map({1: "✅ Sim", 0: "❌ Não"})
+st.dataframe(
+    sup_display[["Supervisor", "Validado", "Validado em"]],
+    use_container_width=True, hide_index=True,
+)
+
+st.divider()
 
 proj = pd.read_sql_query(
     "SELECT chave, produto_codigo, month_index, month_label, current_value, vendor_value, last_changed_level "
@@ -115,9 +139,10 @@ else:
     for _c in ["Média 3M", "Média 6M", "Mínimo", "Máximo", "Último Mês"]:
         table_display[_c] = table_display[_c].apply(lambda v: fmt_milhar(v, 1))
     disabled_cols = [c for c in table_display.columns if c not in month_cols]
-    desvio_column_config = {m: st.column_config.NumberColumn(format="%.1f") for m in month_cols}
+    desvio_column_config = {m: st.column_config.NumberColumn(fill_label(m), format="%.1f") for m in month_cols}
 
     st.caption(f"{len(table_display)} linha(s) com projeção mais de 10% abaixo do Último Mês. Edite diretamente na tabela para revisar linha a linha.")
+    fill_caption()
     table_display = filter_dataframe(table_display, key="filtro_desvios_regional")
     edited_desvio = st.data_editor(
         table_display, use_container_width=True, hide_index=True,
@@ -230,7 +255,7 @@ with tab1:
     mes_sel = st.selectbox("Mês", grid["month_label"].tolist(), key="t1_mes")
     grid_row = grid[grid["month_label"] == mes_sel].iloc[0]
     st.metric("Valor atual", f"{grid_row['current_value']:.0f} kg")
-    novo_valor = st.number_input("Novo valor (kg)", min_value=0.0, value=float(grid_row["current_value"]), key="t1_valor")
+    novo_valor = st.number_input(fill_label("Novo valor (kg)"), min_value=0.0, value=float(grid_row["current_value"]), key="t1_valor")
     if st.button("Aplicar ajuste", key="t1_apply"):
         cur = conn.cursor()
         cur.execute(
@@ -256,7 +281,7 @@ with tab2:
     total_atual = scope_rows["current_value"].sum()
     st.metric(f"Total atual alocado em {mes_sel2}", f"{total_atual:.0f} kg")
 
-    novo_total = st.number_input("Novo total (kg)", min_value=0.0, value=float(total_atual), key="t2_total")
+    novo_total = st.number_input(fill_label("Novo total (kg)"), min_value=0.0, value=float(total_atual), key="t2_total")
     if st.button("Redistribuir proporcionalmente", key="t2_apply"):
         rows_for_redist = [
             {"key": (r["chave"], r["produto_codigo"], r["month_index"]), "value": r["current_value"]}
@@ -291,7 +316,7 @@ with tab3:
         prod_options = produtos.apply(lambda r: f"{r['produto_descricao']} ({r['produto_codigo']})", axis=1).tolist()
         produto_manual = st.selectbox("SKU", prod_options) if prod_options else None
         mes_manual = st.selectbox("Mês", month_order, key="t3_mes")
-        valor_manual = st.number_input("Valor (kg)", min_value=0.0, value=0.0, key="t3_valor")
+        valor_manual = st.number_input(fill_label("Valor (kg)"), min_value=0.0, value=0.0, key="t3_valor")
         nota_manual = st.text_area("Nota / justificativa")
         submitted = st.form_submit_button("Adicionar ajuste manual")
         if submitted:

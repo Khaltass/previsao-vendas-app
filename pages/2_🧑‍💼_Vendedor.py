@@ -5,7 +5,7 @@ import streamlit as st
 
 from db import init_db, now_iso, get_config
 from models import is_deviation, redistribute_by_last_month, horizon_for_family, month_label_for_cycle
-from ui_helpers import fmt_milhar
+from ui_helpers import fmt_milhar, fill_label, fill_caption
 
 conn = st.session_state.get("conn") or init_db()
 st.session_state["conn"] = conn
@@ -158,7 +158,8 @@ for chave in selected_chaves:
         totals_now = sub_proj.groupby("month_label")["current_value"].sum()
         total_row = {m: round(totals_now.get(m, 0.0), 1) for m in cliente_months}
         total_df = pd.DataFrame([total_row])
-        total_col_config = {m: st.column_config.NumberColumn(format="%.1f") for m in cliente_months}
+        total_col_config = {m: st.column_config.NumberColumn(fill_label(m), format="%.1f") for m in cliente_months}
+        fill_caption()
 
         edited_total = st.data_editor(
             total_df, use_container_width=True, hide_index=True,
@@ -216,7 +217,8 @@ for chave in selected_chaves:
             sku_display[_c] = sku_display[_c].apply(lambda v: fmt_milhar(v, 1))
 
         disabled_sku_cols = ["Cód. SKU", "Família", "SKU", "Média 3M", "Média 6M", "Mínimo", "Máximo", "Último Mês", "Desvio"]
-        sku_col_config = {m: st.column_config.NumberColumn(format="%.1f") for m in cliente_months}
+        sku_col_config = {m: st.column_config.NumberColumn(fill_label(m), format="%.1f") for m in cliente_months}
+        fill_caption()
 
         edited_sku = st.data_editor(
             sku_display, use_container_width=True, hide_index=True,

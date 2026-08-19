@@ -1,6 +1,18 @@
 """Helpers de UI reutilizados pelas páginas do app."""
 import streamlit as st
 
+FILL_ICON = "✏️"
+
+
+def fill_label(text: str) -> str:
+    """Prefixa o rótulo de uma coluna/campo editável com um ícone, para destacar
+    visualmente (Streamlit não permite colorir células de data_editor por coluna)."""
+    return f"{FILL_ICON} {text}"
+
+
+def fill_caption():
+    st.caption(f"{FILL_ICON} indica colunas e campos abertos para preenchimento/edição.")
+
 
 def fmt_milhar(v, decimals: int = 0) -> str:
     """Formata um número com separador de milhar padrão brasileiro (ponto).
