@@ -4,3 +4,4 @@ __pycache__/
 data/
 screenshots/
 streamlit.log
+.streamlit/secrets.toml

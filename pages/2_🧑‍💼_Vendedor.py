@@ -269,10 +269,11 @@ for chave in selected_chaves:
                     ts = now_iso()
                     cur = conn.cursor()
                     cur.execute(
-                        "INSERT OR IGNORE INTO volumes (chave, cliente_nome, regional_descricao, supervisor_nome, "
+                        "INSERT INTO volumes (chave, cliente_nome, regional_descricao, supervisor_nome, "
                         "grupo_descricao, vendedor_codigo, vendedor_nome, produto_codigo, produto_descricao, "
                         "media_6m, media_3m, minimo, maximo, ultimo_mes) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL)",
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL) "
+                        "ON CONFLICT (chave, produto_codigo) DO NOTHING",
                         (chave, cliente_nome, regional_descricao, supervisor_nome, grupo_descricao_novo,
                          vendedor_codigo, vendedor_nome, produto_codigo_novo, produto_descricao_novo),
                     )
@@ -283,9 +284,10 @@ for chave in selected_chaves:
                         for m in range(1, horizon + 1)
                     ]
                     cur.executemany(
-                        "INSERT OR IGNORE INTO projection_values (chave, produto_codigo, month_index, month_label, "
+                        "INSERT INTO projection_values (chave, produto_codigo, month_index, month_label, "
                         "current_value, vendor_value, last_changed_level, last_changed_by, last_changed_at) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                        "ON CONFLICT (chave, produto_codigo, month_index) DO NOTHING",
                         proj_rows_novos,
                     )
                     conn.commit()

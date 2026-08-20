@@ -194,9 +194,12 @@ def load_into_db(conn, parsed: dict, cycle_year: int, cycle_month: int):
         "vendedor_codigo", "vendedor_nome", "produto_codigo", "produto_descricao",
         "media_6m", "media_3m", "minimo", "maximo", "ultimo_mes",
     ]
+    vol_update_cols = [c for c in vol_cols if c not in ("chave", "produto_codigo")]
     cur.executemany(
-        f"INSERT OR REPLACE INTO volumes ({', '.join(vol_cols)}) "
-        f"VALUES ({', '.join(['?'] * len(vol_cols))})",
+        f"INSERT INTO volumes ({', '.join(vol_cols)}) "
+        f"VALUES ({', '.join(['?'] * len(vol_cols))}) "
+        f"ON CONFLICT (chave, produto_codigo) DO UPDATE SET "
+        + ", ".join(f"{c} = excluded.{c}" for c in vol_update_cols),
         df_v[vol_cols].values.tolist(),
     )
 
@@ -215,10 +218,16 @@ def load_into_db(conn, parsed: dict, cycle_year: int, cycle_month: int):
             proj_rows.append(
                 (row["chave"], row["produto_codigo"], m, label, media_3m, media_3m, "vendedor", None, ts)
             )
+    proj_cols = [
+        "chave", "produto_codigo", "month_index", "month_label", "current_value", "vendor_value",
+        "last_changed_level", "last_changed_by", "last_changed_at",
+    ]
+    proj_update_cols = [c for c in proj_cols if c not in ("chave", "produto_codigo", "month_index")]
     cur.executemany(
-        "INSERT OR REPLACE INTO projection_values "
-        "(chave, produto_codigo, month_index, month_label, current_value, vendor_value, "
-        "last_changed_level, last_changed_by, last_changed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        f"INSERT INTO projection_values ({', '.join(proj_cols)}) "
+        f"VALUES ({', '.join(['?'] * len(proj_cols))}) "
+        f"ON CONFLICT (chave, produto_codigo, month_index) DO UPDATE SET "
+        + ", ".join(f"{c} = excluded.{c}" for c in proj_update_cols),
         proj_rows,
     )
     conn.commit()
