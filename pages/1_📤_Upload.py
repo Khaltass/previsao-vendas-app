@@ -5,16 +5,18 @@ import streamlit as st
 from db import init_db, reset_data, has_data, get_config, set_config
 from excel_io import parse_workbook, load_into_db, ValidationError
 from models import month_label_for_cycle
+from ui_helpers import apply_theme
 
 MESES_NOMES = [
     "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
     "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ]
 
+apply_theme()
 conn = st.session_state.get("conn") or init_db()
 st.session_state["conn"] = conn
 
-st.title("📤 Upload da planilha de demanda")
+st.title(":material/upload_file: Upload da planilha de demanda")
 
 st.markdown(
     """
@@ -27,7 +29,7 @@ Envie um arquivo **.xlsx** com três abas:
    Código do Vendedor, Nome do Vendedor, Código do Produto, Descrição do Produto,
    Media 6 Meses Kg, Media 3 Meses Kg, **Mínimo**, **Máximo**, Ultimo Mês
 
-⚠️ Um novo upload **substitui integralmente** os dados e as projeções já carregadas.
+:material/warning: Um novo upload **substitui integralmente** os dados e as projeções já carregadas.
 
 As colunas de e-mail na Hierarquia são opcionais: quando presentes, permitem que o app
 identifique automaticamente o perfil de quem acessa via login corporativo (Azure/Entra ID).

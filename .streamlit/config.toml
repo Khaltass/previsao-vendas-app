@@ -1,0 +1,17 @@
+[theme]
+base = "light"
+primaryColor = "#2451B3"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F5F6F8"
+textColor = "#1A1D23"
+font = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+linkColor = "#2451B3"
+borderColor = "#E2E4E9"
+dataframeBorderColor = "#E2E4E9"
+dataframeHeaderBackgroundColor = "#F5F6F8"
+showWidgetBorder = true
+baseRadius = "small"
+buttonRadius = "small"
+greenColor = "#1E8E5A"
+orangeColor = "#C7862B"
+redColor = "#C0392B"

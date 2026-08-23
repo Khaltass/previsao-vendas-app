@@ -3,12 +3,13 @@ import streamlit as st
 
 from db import init_db, now_iso
 from models import is_deviation, redistribute_proportional
-from ui_helpers import filter_dataframe, fmt_milhar, fill_label, fill_caption
+from ui_helpers import filter_dataframe, fmt_milhar, fill_label, fill_caption, apply_theme
 
+apply_theme()
 conn = st.session_state.get("conn") or init_db()
 st.session_state["conn"] = conn
 
-st.title("🏢 Área do Gerente Regional")
+st.title(":material/corporate_fare: Área do Gerente Regional")
 
 if st.session_state.get("papel") != "Gerente Regional":
     st.warning("Selecione o perfil **Gerente Regional** na página Home antes de acessar esta tela.")
@@ -47,7 +48,7 @@ validaram_sup = int(supervisores["enviado"].sum())
 
 st.metric("Supervisores que já validaram", f"{validaram_sup} de {total_sup}")
 sup_display = supervisores.rename(columns={"supervisor_nome": "Supervisor", "enviado_em": "Validado em"})
-sup_display["Validado"] = sup_display["enviado"].map({1: "✅ Sim", 0: "❌ Não"})
+sup_display["Validado"] = sup_display["enviado"].map({1: "Sim", 0: "Não"})
 st.dataframe(
     sup_display[["Supervisor", "Validado", "Validado em"]],
     use_container_width=True, hide_index=True,
@@ -151,7 +152,7 @@ else:
 
     col_a, col_b, col_c = st.columns(3)
     with col_a:
-        if st.button("💾 Salvar revisão manual", key="desvio_save"):
+        if st.button("Salvar revisão manual", icon=":material/save:", key="desvio_save"):
             cur = conn.cursor()
             n = 0
             for i, row in edited_desvio.iterrows():
@@ -175,7 +176,7 @@ else:
             st.session_state["flash_msg"] = f"Revisão manual salva ({n} célula(s) alterada(s))."
             st.rerun()
     with col_b:
-        if st.button("🔧 Corrigir automaticamente com Média 3M", key="desvio_autofix"):
+        if st.button("Corrigir automaticamente com Média 3M", icon=":material/build:", key="desvio_autofix"):
             cur = conn.cursor()
             n = 0
             for _, row in table_desvio.iterrows():
@@ -204,7 +205,7 @@ else:
             st.session_state["flash_msg"] = f"Correção automática aplicada com Média 3M ({n} célula(s))."
             st.rerun()
     with col_c:
-        if st.button("🔧 Corrigir automaticamente com Último Mês", key="desvio_autofix_ultimo"):
+        if st.button("Corrigir automaticamente com Último Mês", icon=":material/build:", key="desvio_autofix_ultimo"):
             cur = conn.cursor()
             n = 0
             for _, row in table_desvio.iterrows():
@@ -235,9 +236,9 @@ else:
 st.divider()
 
 tab1, tab2, tab3 = st.tabs([
-    "✏️ Editar célula específica",
-    "📊 Ajustar total por grupo (redistribuição proporcional)",
-    "➕ Ajuste manual (sem projeção prévia)",
+    "Editar célula específica",
+    "Ajustar total por grupo (redistribuição proporcional)",
+    "Ajuste manual (sem projeção prévia)",
 ])
 
 with tab1:

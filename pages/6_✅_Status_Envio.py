@@ -2,12 +2,13 @@ import pandas as pd
 import streamlit as st
 
 from db import init_db, has_data, now_iso
-from ui_helpers import filter_dataframe, fmt_milhar, fill_label, fill_caption
+from ui_helpers import filter_dataframe, fmt_milhar, fill_label, fill_caption, apply_theme
 
+apply_theme()
 conn = st.session_state.get("conn") or init_db()
 st.session_state["conn"] = conn
 
-st.title("✅ Status de Envio e Aprovação")
+st.title(":material/fact_check: Status de Envio e Aprovação")
 
 if not has_data(conn):
     st.warning("Nenhuma planilha carregada ainda. Vá até a página **Upload** para carregar os dados.")
@@ -88,7 +89,7 @@ else:
         "vendedor_codigo": "Cód.", "enviado_em": "Enviado em", "enviado_por": "Enviado por",
         "status_aprovacao": "Status Supervisor", "aprovado_por": "Aprovado por", "aprovado_em": "Aprovado em",
     })
-    vend_display["Enviado"] = vend_display["enviado"].map({1: "✅ Sim", 0: "❌ Não"})
+    vend_display["Enviado"] = vend_display["enviado"].map({1: "Sim", 0: "Não"})
     vend_display = vend_display[
         ["Regional", "Supervisor", "Vendedor", "Cód.", "Enviado", "Enviado em",
          "Status Supervisor", "Aprovado por", "Aprovado em"]
@@ -108,7 +109,7 @@ else:
             },
             key="status_editor_vendedor",
         )
-        if st.button("💾 Salvar aprovações de vendedores", key="save_aprov_vendedor"):
+        if st.button("Salvar aprovações de vendedores", icon=":material/save:", key="save_aprov_vendedor"):
             cur = conn.cursor()
             n = 0
             for i, row in edited_vend.iterrows():
@@ -161,7 +162,7 @@ if is_gerente:
         },
         key="status_editor_supervisor",
     )
-    if st.button("💾 Salvar aprovações de supervisores", key="save_aprov_supervisor"):
+    if st.button("Salvar aprovações de supervisores", icon=":material/save:", key="save_aprov_supervisor"):
         cur = conn.cursor()
         n = 0
         for i, row in edited_sup.iterrows():

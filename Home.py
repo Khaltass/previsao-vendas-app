@@ -3,8 +3,10 @@ import pandas as pd
 
 from db import init_db, has_data
 from auth import get_logged_in_email, resolve_identity_from_email
+from ui_helpers import apply_theme
 
-st.set_page_config(page_title="Coleta de Demanda de Vendas", page_icon="📦", layout="wide")
+st.set_page_config(page_title="Coleta de Demanda de Vendas", page_icon=":material/inventory_2:", layout="wide")
+apply_theme()
 
 conn = st.session_state.get("conn") or init_db()
 st.session_state["conn"] = conn
@@ -20,7 +22,7 @@ papel = st.session_state.get("papel")
 
 
 def render_home():
-    st.title("📦 App Piloto — Coleta de Demanda de Volume de Vendas")
+    st.title(":material/inventory_2: App Piloto — Coleta de Demanda de Volume de Vendas")
 
     if not has_data(conn):
         st.warning(
@@ -100,14 +102,14 @@ def render_home():
     )
 
 
-home_page = st.Page(render_home, title="Home", icon="🏠", default=True)
-upload_page = st.Page("pages/1_📤_Upload.py", title="Upload", icon="📤")
-vendedor_page = st.Page("pages/2_🧑‍💼_Vendedor.py", title="Vendedor", icon="🧑‍💼")
-supervisor_page = st.Page("pages/3_👥_Supervisor.py", title="Supervisor", icon="👥")
-gerente_page = st.Page("pages/4_🏢_Gerente_Regional.py", title="Gerente Regional", icon="🏢")
-consolidacao_page = st.Page("pages/5_📊_Consolidacao.py", title="Consolidação", icon="📊")
-status_page = st.Page("pages/6_✅_Status_Envio.py", title="Status de Envio", icon="✅")
-backlog_page = st.Page("pages/7_📋_Backlog.py", title="Backlog", icon="📋")
+home_page = st.Page(render_home, title="Home", icon=":material/home:", default=True)
+upload_page = st.Page("pages/1_📤_Upload.py", title="Upload", icon=":material/upload_file:")
+vendedor_page = st.Page("pages/2_🧑‍💼_Vendedor.py", title="Vendedor", icon=":material/badge:")
+supervisor_page = st.Page("pages/3_👥_Supervisor.py", title="Supervisor", icon=":material/group:")
+gerente_page = st.Page("pages/4_🏢_Gerente_Regional.py", title="Gerente Regional", icon=":material/corporate_fare:")
+consolidacao_page = st.Page("pages/5_📊_Consolidacao.py", title="Consolidação", icon=":material/bar_chart:")
+status_page = st.Page("pages/6_✅_Status_Envio.py", title="Status de Envio", icon=":material/fact_check:")
+backlog_page = st.Page("pages/7_📋_Backlog.py", title="Backlog", icon=":material/assignment:")
 
 if logged_email and papel:
     # login corporativo com perfil identificado: acesso restrito somente à tela da alçada

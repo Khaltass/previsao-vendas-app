@@ -3,12 +3,13 @@ import streamlit as st
 
 from db import init_db, now_iso
 from models import is_deviation, redistribute_proportional
-from ui_helpers import filter_dataframe, fmt_milhar, fill_label, fill_caption
+from ui_helpers import filter_dataframe, fmt_milhar, fill_label, fill_caption, apply_theme
 
+apply_theme()
 conn = st.session_state.get("conn") or init_db()
 st.session_state["conn"] = conn
 
-st.title("👥 Área do Supervisor")
+st.title(":material/group: Área do Supervisor")
 
 if st.session_state.get("papel") != "Supervisor":
     st.warning("Selecione o perfil **Supervisor** na página Home antes de acessar esta tela.")
@@ -58,7 +59,7 @@ with col_equipe:
     equipe_display = equipe.rename(columns={
         "vendedor_nome": "Vendedor", "vendedor_codigo": "Cód.", "enviado_em": "Enviado em",
     })
-    equipe_display["Enviado"] = equipe_display["enviado"].map({1: "✅ Sim", 0: "❌ Não"})
+    equipe_display["Enviado"] = equipe_display["enviado"].map({1: "Sim", 0: "Não"})
     st.dataframe(
         equipe_display[["Vendedor", "Cód.", "Enviado", "Enviado em"]],
         use_container_width=True, hide_index=True,
@@ -69,7 +70,7 @@ with col_validar:
         st.success(f"Sua validação foi enviada em {sup_own['enviado_em']}.")
     else:
         st.warning("Você ainda não validou a previsão da equipe para o Gerente.")
-    if st.button("✅ Validar e enviar ao Gerente", key="validar_supervisor", type="primary"):
+    if st.button("Validar e enviar ao Gerente", icon=":material/check_circle:", key="validar_supervisor", type="primary"):
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO submission_status "
@@ -211,7 +212,7 @@ else:
 
     col_a, col_b, col_c = st.columns(3)
     with col_a:
-        if st.button("💾 Salvar revisão manual", key="desvio_save"):
+        if st.button("Salvar revisão manual", icon=":material/save:", key="desvio_save"):
             cur = conn.cursor()
             n = 0
             for i, row in edited_desvio.iterrows():
@@ -235,7 +236,7 @@ else:
             st.session_state["flash_msg"] = f"Revisão manual salva ({n} célula(s) alterada(s))."
             st.rerun()
     with col_b:
-        if st.button("🔧 Corrigir automaticamente com Média 3M", key="desvio_autofix"):
+        if st.button("Corrigir automaticamente com Média 3M", icon=":material/build:", key="desvio_autofix"):
             cur = conn.cursor()
             n = 0
             for _, row in table_desvio.iterrows():
@@ -264,7 +265,7 @@ else:
             st.session_state["flash_msg"] = f"Correção automática aplicada com Média 3M ({n} célula(s))."
             st.rerun()
     with col_c:
-        if st.button("🔧 Corrigir automaticamente com Último Mês", key="desvio_autofix_ultimo"):
+        if st.button("Corrigir automaticamente com Último Mês", icon=":material/build:", key="desvio_autofix_ultimo"):
             cur = conn.cursor()
             n = 0
             for _, row in table_desvio.iterrows():
@@ -295,9 +296,9 @@ else:
 st.divider()
 
 tab1, tab2, tab3 = st.tabs([
-    "✏️ Editar célula específica",
-    "📊 Ajustar total por grupo (redistribuição proporcional)",
-    "➕ Ajuste manual (sem projeção prévia)",
+    "Editar célula específica",
+    "Ajustar total por grupo (redistribuição proporcional)",
+    "Ajuste manual (sem projeção prévia)",
 ])
 
 with tab1:

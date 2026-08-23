@@ -4,12 +4,13 @@ import streamlit as st
 
 from db import init_db, has_data
 from models import is_deviation
-from ui_helpers import filter_dataframe, fmt_milhar
+from ui_helpers import filter_dataframe, fmt_milhar, apply_theme
 
+apply_theme()
 conn = st.session_state.get("conn") or init_db()
 st.session_state["conn"] = conn
 
-st.title("📊 Consolidação final")
+st.title(":material/bar_chart: Consolidação final")
 
 if not has_data(conn):
     st.warning("Nenhuma planilha carregada ainda. Vá até a página **Upload** para carregar os dados.")
@@ -92,12 +93,13 @@ if group_by:
 
 st.divider()
 st.subheader("Detalhe por Regional")
-st.caption("Clique em ➕ para abrir uma regional e ver o detalhamento por Família de produto e SKU.")
+st.caption(":material/add: para abrir uma regional e ver o detalhamento por Família de produto e SKU.")
 
 regional_agg = detalhe_display.groupby("Regional")["Volume (kg)"].sum().reset_index().sort_values("Regional")
 
 busca_regional = st.text_input(
-    "🔍 Filtrar regional", key="filtro_regional_detalhe", placeholder="Digite o nome da regional..."
+    "Filtrar regional", key="filtro_regional_detalhe", placeholder="Digite o nome da regional...",
+    icon=":material/search:",
 )
 if busca_regional:
     regional_agg = regional_agg[regional_agg["Regional"].str.contains(busca_regional, case=False, na=False)]
@@ -114,7 +116,8 @@ for _, rrow in regional_agg.iterrows():
 
     with st.container(border=True):
         row_cols = st.columns(col_widths_regional)
-        if row_cols[0].button("➖" if aberto else "➕", key=f"toggle_regional_{regional}"):
+        toggle_icon = ":material/remove:" if aberto else ":material/add:"
+        if row_cols[0].button("", icon=toggle_icon, key=f"toggle_regional_{regional}"):
             st.session_state[exp_key] = not aberto
             st.rerun()
         row_cols[1].write(regional)
@@ -151,7 +154,10 @@ st.divider()
 st.subheader("Exportar")
 
 csv_bytes = detalhe_display.to_csv(index=False).encode("utf-8-sig")
-st.download_button("⬇️ Baixar CSV", data=csv_bytes, file_name="consolidacao_vendas.csv", mime="text/csv")
+st.download_button(
+    "Baixar CSV", data=csv_bytes, file_name="consolidacao_vendas.csv", mime="text/csv",
+    icon=":material/download:",
+)
 
 xlsx_buffer = io.BytesIO()
 with pd.ExcelWriter(xlsx_buffer, engine="xlsxwriter") as writer:
@@ -164,7 +170,8 @@ with pd.ExcelWriter(xlsx_buffer, engine="xlsxwriter") as writer:
         totals_export = pd.concat([totals, pd.DataFrame([export_total_row])], ignore_index=True)
         totals_export.to_excel(writer, index=False, sheet_name="Totais")
 st.download_button(
-    "⬇️ Baixar Excel", data=xlsx_buffer.getvalue(),
+    "Baixar Excel", data=xlsx_buffer.getvalue(),
     file_name="consolidacao_vendas.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    icon=":material/download:",
 )

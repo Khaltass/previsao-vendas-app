@@ -5,12 +5,13 @@ import streamlit as st
 
 from db import init_db, now_iso, get_config
 from models import is_deviation, redistribute_by_weight, horizon_for_family, month_label_for_cycle
-from ui_helpers import fmt_milhar, fill_label, fill_caption
+from ui_helpers import fmt_milhar, fill_label, fill_caption, apply_theme
 
+apply_theme()
 conn = st.session_state.get("conn") or init_db()
 st.session_state["conn"] = conn
 
-st.title("🧑‍💼 Área do Vendedor")
+st.title(":material/badge: Área do Vendedor")
 
 if st.session_state.get("papel") != "Vendedor":
     st.warning("Selecione o perfil **Vendedor** na página Home antes de acessar esta tela.")
@@ -49,7 +50,9 @@ col_status, col_send = st.columns([3, 1])
 with col_status:
     if status_row and status_row["enviado"]:
         aprovacao = status_row["status_aprovacao"] or "Pendente"
-        icone = {"Pendente": "🕓", "Aprovado": "✅", "Reprovado": "❌"}.get(aprovacao, "🕓")
+        icone = {
+            "Pendente": ":material/schedule:", "Aprovado": ":material/check_circle:", "Reprovado": ":material/cancel:",
+        }.get(aprovacao, ":material/schedule:")
         st.info(
             f"Previsão enviada em **{status_row['enviado_em']}**. "
             f"Status de aprovação do supervisor: {icone} **{aprovacao}**."
@@ -58,7 +61,7 @@ with col_status:
         st.warning("Você ainda não enviou sua previsão para aprovação do supervisor.")
 with col_send:
     st.write("")
-    if st.button("📤 Enviar previsão", key="enviar_previsao"):
+    if st.button("Enviar previsão", icon=":material/upload_file:", key="enviar_previsao"):
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO submission_status "
@@ -127,7 +130,7 @@ def render_cliente_detail(chave):
             total_df, use_container_width=True, hide_index=True,
             column_config=total_col_config, key=f"total_editor_{chave}",
         )
-        if st.button("🔀 Ratear pela média histórica e salvar", key=f"rateio_btn_{chave}"):
+        if st.button("Ratear pela média histórica e salvar", icon=":material/sync_alt:", key=f"rateio_btn_{chave}"):
             ts = now_iso()
             cur = conn.cursor()
             n = 0
@@ -166,7 +169,7 @@ def render_cliente_detail(chave):
             ["grupo_descricao", "produto_descricao", "media_3m", "media_6m", "minimo", "maximo", "ultimo_mes"]
         ].join(sku_pivot)
         sku_raw["Desvio"] = sku_raw.apply(
-            lambda r: "⚠️" if any(is_deviation(r[m], r["ultimo_mes"]) for m in cliente_months if pd.notna(r[m])) else "",
+            lambda r: "⚠" if any(is_deviation(r[m], r["ultimo_mes"]) for m in cliente_months if pd.notna(r[m])) else "",
             axis=1,
         )
 
@@ -186,7 +189,7 @@ def render_cliente_detail(chave):
             sku_display, use_container_width=True, hide_index=True,
             disabled=disabled_sku_cols, column_config=sku_col_config, key=f"sku_editor_{chave}",
         )
-        if st.button("💾 Salvar valores por SKU", key=f"save_sku_btn_{chave}"):
+        if st.button("Salvar valores por SKU", icon=":material/save:", key=f"save_sku_btn_{chave}"):
             ts = now_iso()
             cur = conn.cursor()
             n = 0
@@ -223,7 +226,7 @@ def render_cliente_detail(chave):
                 novo_produto_sel = st.selectbox("Produto", novo_prod_options, key=f"novo_produto_{chave}")
             with col_novo_btn:
                 st.write("")
-                if st.button("➕ Adicionar produto", key=f"add_produto_btn_{chave}"):
+                if st.button("Adicionar produto", icon=":material/add:", key=f"add_produto_btn_{chave}"):
                     novo_row = produtos_disponiveis.iloc[novo_prod_options.index(novo_produto_sel)]
                     produto_codigo_novo = novo_row["produto_codigo"]
                     produto_descricao_novo = novo_row["produto_descricao"]
@@ -280,8 +283,9 @@ grupo_month_totals = proj_all.pivot_table(
 ).reindex(columns=month_labels_sorted)
 
 busca = st.text_input(
-    "🔍 Filtrar grupo/cliente", key="filtro_carteira_cliente",
+    "Filtrar grupo/cliente", key="filtro_carteira_cliente",
     placeholder="Digite o nome do grupo (rede) ou de uma loja/cliente...",
+    icon=":material/search:",
 )
 
 with st.container(border=True):
@@ -338,7 +342,7 @@ for grupo in selected_grupos:
         continue
 
     with st.container(border=True):
-        st.markdown(f"### 🏬 {grupo} — {len(lojas_grupo)} lojas")
+        st.markdown(f"### :material/storefront: {grupo} — {len(lojas_grupo)} lojas")
 
         sub_proj_grupo = proj_all[proj_all["grupo_cliente"] == grupo]
         grupo_months = [m for m in month_labels_sorted if m in sub_proj_grupo["month_label"].unique()]
@@ -357,7 +361,10 @@ for grupo in selected_grupos:
             total_df_grupo, use_container_width=True, hide_index=True,
             column_config=col_config_grupo, key=f"total_grupo_editor_{grupo}",
         )
-        if st.button("🔀 Ratear pela média histórica entre as lojas e salvar", key=f"rateio_grupo_btn_{grupo}"):
+        if st.button(
+            "Ratear pela média histórica entre as lojas e salvar", icon=":material/sync_alt:",
+            key=f"rateio_grupo_btn_{grupo}",
+        ):
             ts = now_iso()
             cur = conn.cursor()
             n = 0

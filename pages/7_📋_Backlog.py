@@ -2,12 +2,13 @@ import pandas as pd
 import streamlit as st
 
 from db import init_db, now_iso
-from ui_helpers import filter_dataframe, fill_label, fill_caption
+from ui_helpers import filter_dataframe, fill_label, fill_caption, apply_theme
 
+apply_theme()
 conn = st.session_state.get("conn") or init_db()
 st.session_state["conn"] = conn
 
-st.title("📋 Backlog de Melhorias")
+st.title(":material/assignment: Backlog de Melhorias")
 st.caption("Lista de ideias, ajustes e melhorias para o app. Independe da planilha carregada.")
 
 _flash = st.session_state.pop("flash_msg_backlog", None)
@@ -28,7 +29,7 @@ with st.form("novo_item_backlog", clear_on_submit=True):
     col1, col2 = st.columns(2)
     prioridade = col1.selectbox("Prioridade", PRIORIDADES, index=1)
     autor = col2.text_input("Seu nome", value=autor_padrao)
-    enviar = st.form_submit_button("➕ Adicionar ao backlog")
+    enviar = st.form_submit_button("Adicionar ao backlog", icon=":material/add:")
     if enviar:
         if not titulo.strip():
             st.error("Informe um título para o item.")
@@ -83,7 +84,7 @@ else:
         key="backlog_editor",
     )
 
-    if st.button("💾 Salvar alterações", key="save_backlog"):
+    if st.button("Salvar alterações", icon=":material/save:", key="save_backlog"):
         cur = conn.cursor()
         n = 0
         for i, row in edited.iterrows():
