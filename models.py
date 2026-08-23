@@ -84,9 +84,9 @@ def _safe_num(value) -> float:
     return 0.0 if value != value else value  # value != value só é True para NaN
 
 
-def redistribute_by_last_month(rows, new_total):
+def redistribute_by_weight(rows, new_total):
     """Redistribui `new_total` entre `rows` (lista de dicts com 'key' e 'weight'),
-    proporcionalmente ao peso de cada linha (tipicamente o Último Mês realizado do SKU).
+    proporcionalmente ao peso de cada linha (tipicamente a média histórica do SKU).
 
     Retorna (novos_valores: dict[key, float], redistributable: bool).
     Quando nenhuma linha tem peso (todas 0/None), distribui igualmente entre as linhas

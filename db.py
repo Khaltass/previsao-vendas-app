@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS raw_products (
 CREATE TABLE IF NOT EXISTS volumes (
     chave TEXT,
     cliente_nome TEXT,
+    grupo_cliente TEXT,
     regional_descricao TEXT,
     supervisor_nome TEXT,
     grupo_descricao TEXT,
@@ -147,6 +148,7 @@ CREATE TABLE IF NOT EXISTS raw_products (
 CREATE TABLE IF NOT EXISTS volumes (
     chave TEXT,
     cliente_nome TEXT,
+    grupo_cliente TEXT,
     regional_descricao TEXT,
     supervisor_nome TEXT,
     grupo_descricao TEXT,
@@ -374,20 +376,31 @@ def init_db():
 
 def _migrate_sqlite(conn):
     """Adiciona colunas novas em bancos já existentes (CREATE TABLE IF NOT EXISTS não altera tabelas já criadas)."""
-    existing_cols = {row["name"] for row in conn.execute("PRAGMA table_info(raw_hierarchy)")}
+    hier_cols = {row["name"] for row in conn.execute("PRAGMA table_info(raw_hierarchy)")}
     for col in ("vendedor_email", "supervisor_email", "regional_email"):
-        if col not in existing_cols:
+        if col not in hier_cols:
             conn.execute(f"ALTER TABLE raw_hierarchy ADD COLUMN {col} TEXT")
+
+    vol_cols = {row["name"] for row in conn.execute("PRAGMA table_info(volumes)")}
+    if "grupo_cliente" not in vol_cols:
+        conn.execute("ALTER TABLE volumes ADD COLUMN grupo_cliente TEXT")
 
 
 def _migrate_postgres(conn):
-    cur = conn.execute(
-        "SELECT column_name FROM information_schema.columns WHERE table_name = 'raw_hierarchy'"
-    )
-    existing_cols = {row["column_name"] for row in cur.fetchall()}
+    def _existing_cols(table):
+        cur = conn.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = ?", (table,)
+        )
+        return {row["column_name"] for row in cur.fetchall()}
+
+    hier_cols = _existing_cols("raw_hierarchy")
     for col in ("vendedor_email", "supervisor_email", "regional_email"):
-        if col not in existing_cols:
+        if col not in hier_cols:
             conn.execute(f"ALTER TABLE raw_hierarchy ADD COLUMN {col} TEXT")
+
+    vol_cols = _existing_cols("volumes")
+    if "grupo_cliente" not in vol_cols:
+        conn.execute("ALTER TABLE volumes ADD COLUMN grupo_cliente TEXT")
 
 
 def reset_data(conn):

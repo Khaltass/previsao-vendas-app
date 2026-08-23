@@ -61,6 +61,13 @@ VOLUMES_COLS = {
     "ultimo_mes": ["ultimo mes"],
 }
 
+# opcional: agrupa clientes com mais de uma loja ("redes"). Ausente até que a
+# planilha seja atualizada com essa coluna — nesse caso cada cliente forma seu
+# próprio grupo (ver fallback em parse_workbook).
+VOLUMES_OPTIONAL_COLS = {
+    "grupo_cliente": ["grupo do cliente", "grupo cliente", "rede", "nome do grupo do cliente"],
+}
+
 SHEET_ALIASES = {
     "hierarquia": ["hierarquia"],
     "produtos": ["produtos", "cadastro de produtos"],
@@ -138,7 +145,7 @@ def parse_workbook(file) -> dict:
     # dtype=str em toda a leitura evita que o pandas infira colunas de código
     # (ex: "000335") como numéricas e perca os zeros à esquerda.
     df_v_raw = pd.read_excel(xls, sheet_v, dtype=str)
-    df_v = _rename_columns(df_v_raw, VOLUMES_COLS, "Volumes")
+    df_v = _rename_columns(df_v_raw, VOLUMES_COLS, "Volumes", optional_cols=VOLUMES_OPTIONAL_COLS)
 
     key_cols = ["chave", "cliente_nome", "vendedor_codigo", "produto_codigo"]
     for c in key_cols:
@@ -152,6 +159,12 @@ def parse_workbook(file) -> dict:
     text_cols = [c for c in VOLUMES_COLS if c not in numeric_cols]
     for c in text_cols:
         df_v[c] = df_v[c].astype(str).str.strip()
+
+    # grupo_cliente é opcional na planilha; sem ele, cada cliente forma seu próprio grupo.
+    df_v["grupo_cliente"] = df_v["grupo_cliente"].where(df_v["grupo_cliente"].notna(), None)
+    df_v["grupo_cliente"] = df_v["grupo_cliente"].apply(lambda v: v.strip() if isinstance(v, str) else v)
+    sem_grupo = df_v["grupo_cliente"].isna() | (df_v["grupo_cliente"] == "")
+    df_v.loc[sem_grupo, "grupo_cliente"] = df_v.loc[sem_grupo, "cliente_nome"]
 
     for c in df_h.columns:
         if c in HIERARCHY_OPTIONAL_COLS:
@@ -190,7 +203,7 @@ def load_into_db(conn, parsed: dict, cycle_year: int, cycle_month: int):
     )
 
     vol_cols = [
-        "chave", "cliente_nome", "regional_descricao", "supervisor_nome", "grupo_descricao",
+        "chave", "cliente_nome", "grupo_cliente", "regional_descricao", "supervisor_nome", "grupo_descricao",
         "vendedor_codigo", "vendedor_nome", "produto_codigo", "produto_descricao",
         "media_6m", "media_3m", "minimo", "maximo", "ultimo_mes",
     ]
@@ -213,10 +226,13 @@ def load_into_db(conn, parsed: dict, cycle_year: int, cycle_month: int):
             media_3m = row["media_6m"]
         else:
             media_3m = 0.0
+        # Venda histórica zero/negativa: não pré-preenche a projeção (fica em branco
+        # até o vendedor preencher manualmente), em vez de sugerir um valor sem base real.
+        valor_inicial = media_3m if media_3m > 0 else None
         for m in range(1, horizon + 1):
             label = month_label_for_cycle(cycle_year, cycle_month, m)
             proj_rows.append(
-                (row["chave"], row["produto_codigo"], m, label, media_3m, media_3m, "vendedor", None, ts)
+                (row["chave"], row["produto_codigo"], m, label, valor_inicial, valor_inicial, "vendedor", None, ts)
             )
     proj_cols = [
         "chave", "produto_codigo", "month_index", "month_label", "current_value", "vendor_value",

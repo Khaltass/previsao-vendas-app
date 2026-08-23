@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from db import init_db, now_iso, get_config
-from models import is_deviation, redistribute_by_last_month, horizon_for_family, month_label_for_cycle
+from models import is_deviation, redistribute_by_weight, horizon_for_family, month_label_for_cycle
 from ui_helpers import fmt_milhar, fill_label, fill_caption
 
 conn = st.session_state.get("conn") or init_db()
@@ -25,7 +25,7 @@ if _flash:
     st.success(_flash)
 
 carteira = pd.read_sql_query(
-    "SELECT chave, cliente_nome, regional_descricao, grupo_descricao, produto_codigo, produto_descricao, "
+    "SELECT chave, cliente_nome, grupo_cliente, regional_descricao, grupo_descricao, produto_codigo, produto_descricao, "
     "supervisor_nome, media_3m, media_6m, minimo, maximo, ultimo_mes FROM volumes WHERE vendedor_codigo = ?",
     conn, params=(vendedor_codigo,),
 )
@@ -80,81 +80,43 @@ proj = pd.read_sql_query(
 
 # Uma linha por Cliente(chave)/SKU, com os meses do horizonte lado a lado.
 proj_all = carteira[["chave", "produto_codigo"]].merge(proj, on=["chave", "produto_codigo"])
+proj_all = proj_all.merge(carteira[["chave", "grupo_cliente"]].drop_duplicates(), on="chave", how="left")
 month_index_to_label = dict(proj_all[["month_index", "month_label"]].drop_duplicates().values)
 label_to_month_index = {v: k for k, v in month_index_to_label.items()}
 month_labels_sorted = [month_index_to_label[i] for i in sorted(month_index_to_label)]
 
-st.subheader("Visão por cliente")
-st.caption(
-    "Clique no cabeçalho de uma coluna para classificar a tabela (ex.: por Último Mês, do maior "
-    "para o menor, para revisar primeiro os maiores clientes). Marque a caixinha de uma ou mais "
-    "linhas para abrir o detalhe: preencha o total por mês (rateado automaticamente entre os SKUs, "
-    "proporcional ao Último Mês de cada um) ou ajuste um SKU específico."
-)
-
 cliente_agg_all = carteira.groupby("chave").agg(
     cliente_nome=("cliente_nome", "first"),
+    grupo_cliente=("grupo_cliente", "first"),
     skus=("produto_codigo", "nunique"),
     ultimo_mes=("ultimo_mes", "sum"),
-).reset_index().sort_values("cliente_nome")
+).reset_index().sort_values(["grupo_cliente", "cliente_nome"])
 
-cliente_month_totals = proj_all.pivot_table(
-    index="chave", columns="month_label", values="current_value", aggfunc="sum"
-).reindex(columns=month_labels_sorted)
+# Rateio (do total do cliente ou do grupo) entre os SKUs usa a média histórica (3M,
+# com fallback para 6M) como peso — reflete a proporção histórica dos produtos, não
+# apenas o último mês isolado (que pode ser atípico).
+carteira["_peso_rateio"] = carteira["media_3m"].fillna(carteira["media_6m"]).fillna(0)
+weights_by_key = carteira.set_index(["chave", "produto_codigo"])["_peso_rateio"]
 
-weights_by_key = carteira.set_index(["chave", "produto_codigo"])["ultimo_mes"]
 
-busca = st.text_input("🔍 Filtrar cliente", key="filtro_carteira_cliente", placeholder="Digite o nome do cliente...")
-
-with st.container(border=True):
-    total_cols = st.columns([3, 0.8, 1.2] + [1] * len(month_labels_sorted))
-    total_cols[0].markdown("**Total geral da carteira**")
-    total_cols[1].markdown(f"**{int(cliente_agg_all['skus'].sum())}**")
-    total_cols[2].markdown(f"**{fmt_milhar(cliente_agg_all['ultimo_mes'].sum())}**")
-    for i, m in enumerate(month_labels_sorted):
-        v = cliente_month_totals[m].sum() if m in cliente_month_totals.columns else None
-        total_cols[3 + i].markdown(f"**{fmt_milhar(v, 1)}**")
-st.caption("O total acima sempre reflete toda a carteira, mesmo com o filtro de cliente aplicado.")
-
-cliente_table = cliente_agg_all.rename(
-    columns={"chave": "Chave", "cliente_nome": "Cliente", "skus": "SKUs", "ultimo_mes": "Último Mês"}
-).copy()
-for m in month_labels_sorted:
-    cliente_table[m] = cliente_table["Chave"].map(
-        cliente_month_totals[m] if m in cliente_month_totals.columns else {}
-    )
-cliente_table = cliente_table[["Cliente", "Chave", "SKUs", "Último Mês"] + month_labels_sorted]
-if busca:
-    cliente_table = cliente_table[cliente_table["Cliente"].str.contains(busca, case=False, na=False)]
-cliente_table = cliente_table.reset_index(drop=True)
-
-month_fmt = {m: (lambda v: fmt_milhar(v, 1)) for m in month_labels_sorted}
-cliente_table_styled = cliente_table.style.format(
-    {"Último Mês": fmt_milhar, **month_fmt}, na_rep="-"
-)
-
-evento_tabela = st.dataframe(
-    cliente_table_styled,
-    use_container_width=True,
-    hide_index=True,
-    on_select="rerun",
-    selection_mode="multi-row",
-    key="tabela_clientes_vendedor",
-)
-
-selected_positions = evento_tabela.selection.rows
-selected_chaves = cliente_table.iloc[selected_positions]["Chave"].tolist() if selected_positions else []
-
-for chave in selected_chaves:
+def render_cliente_detail(chave):
+    """Painel de detalhe de uma loja/cliente: total rateado entre SKUs, edição por
+    SKU e inclusão de produto sem histórico. Reutilizado tanto para clientes sem
+    grupo (rede de 1 loja) quanto, aninhado, para cada loja selecionada dentro de
+    um grupo com várias lojas."""
     crow = cliente_agg_all[cliente_agg_all["chave"] == chave].iloc[0]
     cliente_nome = crow["cliente_nome"]
+    grupo_cliente_atual = crow["grupo_cliente"]
     sub_carteira = carteira[carteira["chave"] == chave]
     sub_proj = proj_all[proj_all["chave"] == chave]
     cliente_months = [m for m in month_labels_sorted if m in sub_proj["month_label"].unique()]
 
     with st.container(border=True):
         st.markdown(f"#### {cliente_nome} — {chave}")
-        st.write("**Total do cliente por mês (kg)** — rateado automaticamente entre os SKUs ao salvar.")
+        st.write(
+            "**Total do cliente por mês (kg)** — rateado automaticamente entre os SKUs ao salvar, "
+            "proporcional à média histórica (3M, com base na 6M quando a 3M não existir) de cada SKU."
+        )
         totals_now = sub_proj.groupby("month_label")["current_value"].sum()
         total_row = {m: round(totals_now.get(m, 0.0), 1) for m in cliente_months}
         total_df = pd.DataFrame([total_row])
@@ -165,7 +127,7 @@ for chave in selected_chaves:
             total_df, use_container_width=True, hide_index=True,
             column_config=total_col_config, key=f"total_editor_{chave}",
         )
-        if st.button("🔀 Ratear pelo Último Mês e salvar", key=f"rateio_btn_{chave}"):
+        if st.button("🔀 Ratear pela média histórica e salvar", key=f"rateio_btn_{chave}"):
             ts = now_iso()
             cur = conn.cursor()
             n = 0
@@ -179,7 +141,7 @@ for chave in selected_chaves:
                     {"key": r["produto_codigo"], "weight": weights_by_key.get((chave, r["produto_codigo"]), 0)}
                     for _, r in month_rows.iterrows()
                 ]
-                new_values, ok = redistribute_by_last_month(rows_for_redist, float(novo_total))
+                new_values, ok = redistribute_by_weight(rows_for_redist, float(novo_total))
                 if not ok:
                     continue
                 month_idx = label_to_month_index[m]
@@ -269,12 +231,12 @@ for chave in selected_chaves:
                     ts = now_iso()
                     cur = conn.cursor()
                     cur.execute(
-                        "INSERT INTO volumes (chave, cliente_nome, regional_descricao, supervisor_nome, "
+                        "INSERT INTO volumes (chave, cliente_nome, grupo_cliente, regional_descricao, supervisor_nome, "
                         "grupo_descricao, vendedor_codigo, vendedor_nome, produto_codigo, produto_descricao, "
                         "media_6m, media_3m, minimo, maximo, ultimo_mes) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL) "
                         "ON CONFLICT (chave, produto_codigo) DO NOTHING",
-                        (chave, cliente_nome, regional_descricao, supervisor_nome, grupo_descricao_novo,
+                        (chave, cliente_nome, grupo_cliente_atual, regional_descricao, supervisor_nome, grupo_descricao_novo,
                          vendedor_codigo, vendedor_nome, produto_codigo_novo, produto_descricao_novo),
                     )
                     horizon = horizon_for_family(grupo_descricao_novo)
@@ -296,3 +258,163 @@ for chave in selected_chaves:
                         f"(sem histórico — preencha os valores manualmente)."
                     )
                     st.rerun()
+
+
+st.subheader("Visão por grupo de cliente (rede)")
+st.caption(
+    "Clique no cabeçalho de uma coluna para classificar a tabela (ex.: por Último Mês, do maior "
+    "para o menor, para revisar primeiro os maiores grupos). Cada linha é um Grupo do Cliente — "
+    "uma rede com uma ou mais lojas (clientes sem grupo na planilha aparecem como grupo de 1 loja "
+    "só). Marque a caixinha de um grupo para programar o total da rede (rateado automaticamente "
+    "entre as lojas e SKUs) e, se precisar, detalhar loja por loja."
+)
+
+grupo_agg_all = carteira.groupby("grupo_cliente").agg(
+    lojas=("chave", "nunique"),
+    skus=("produto_codigo", "nunique"),
+    ultimo_mes=("ultimo_mes", "sum"),
+).reset_index().sort_values("grupo_cliente")
+
+grupo_month_totals = proj_all.pivot_table(
+    index="grupo_cliente", columns="month_label", values="current_value", aggfunc="sum"
+).reindex(columns=month_labels_sorted)
+
+busca = st.text_input(
+    "🔍 Filtrar grupo/cliente", key="filtro_carteira_cliente",
+    placeholder="Digite o nome do grupo (rede) ou de uma loja/cliente...",
+)
+
+with st.container(border=True):
+    total_cols = st.columns([3, 0.8, 0.8, 1.2] + [1] * len(month_labels_sorted))
+    total_cols[0].markdown("**Total geral da carteira**")
+    total_cols[1].markdown(f"**{int(cliente_agg_all['chave'].nunique())}**")
+    total_cols[2].markdown(f"**{int(cliente_agg_all['skus'].sum())}**")
+    total_cols[3].markdown(f"**{fmt_milhar(cliente_agg_all['ultimo_mes'].sum())}**")
+    for i, m in enumerate(month_labels_sorted):
+        v = grupo_month_totals[m].sum() if m in grupo_month_totals.columns else None
+        total_cols[4 + i].markdown(f"**{fmt_milhar(v, 1)}**")
+st.caption("O total acima sempre reflete toda a carteira, mesmo com o filtro de grupo/cliente aplicado.")
+
+grupo_table = grupo_agg_all.rename(
+    columns={"grupo_cliente": "Grupo do Cliente", "lojas": "Lojas", "skus": "SKUs", "ultimo_mes": "Último Mês"}
+).copy()
+for m in month_labels_sorted:
+    grupo_table[m] = grupo_table["Grupo do Cliente"].map(
+        grupo_month_totals[m] if m in grupo_month_totals.columns else {}
+    )
+grupo_table = grupo_table[["Grupo do Cliente", "Lojas", "SKUs", "Último Mês"] + month_labels_sorted]
+if busca:
+    grupos_com_match = carteira[
+        carteira["cliente_nome"].str.contains(busca, case=False, na=False)
+        | carteira["grupo_cliente"].str.contains(busca, case=False, na=False)
+    ]["grupo_cliente"].unique()
+    grupo_table = grupo_table[grupo_table["Grupo do Cliente"].isin(grupos_com_match)]
+grupo_table = grupo_table.reset_index(drop=True)
+
+month_fmt = {m: (lambda v: fmt_milhar(v, 1)) for m in month_labels_sorted}
+grupo_table_styled = grupo_table.style.format(
+    {"Último Mês": fmt_milhar, **month_fmt}, na_rep="-"
+)
+
+evento_tabela = st.dataframe(
+    grupo_table_styled,
+    use_container_width=True,
+    hide_index=True,
+    on_select="rerun",
+    selection_mode="multi-row",
+    key="tabela_grupos_vendedor",
+)
+
+selected_positions = evento_tabela.selection.rows
+selected_grupos = grupo_table.iloc[selected_positions]["Grupo do Cliente"].tolist() if selected_positions else []
+
+for grupo in selected_grupos:
+    lojas_grupo = cliente_agg_all[cliente_agg_all["grupo_cliente"] == grupo].sort_values("cliente_nome")
+
+    if len(lojas_grupo) == 1:
+        # Grupo de 1 loja só (cliente sem rede): vai direto para o detalhe, sem a
+        # camada extra de rateio/seleção de loja.
+        render_cliente_detail(lojas_grupo.iloc[0]["chave"])
+        continue
+
+    with st.container(border=True):
+        st.markdown(f"### 🏬 {grupo} — {len(lojas_grupo)} lojas")
+
+        sub_proj_grupo = proj_all[proj_all["grupo_cliente"] == grupo]
+        grupo_months = [m for m in month_labels_sorted if m in sub_proj_grupo["month_label"].unique()]
+
+        st.write(
+            "**Total do grupo por mês (kg)** — rateado automaticamente entre todas as lojas e SKUs "
+            "da rede ao salvar, proporcional à média histórica de cada SKU."
+        )
+        totals_now_grupo = sub_proj_grupo.groupby("month_label")["current_value"].sum()
+        total_row_grupo = {m: round(totals_now_grupo.get(m, 0.0), 1) for m in grupo_months}
+        total_df_grupo = pd.DataFrame([total_row_grupo])
+        col_config_grupo = {m: st.column_config.NumberColumn(fill_label(m), format="%.1f") for m in grupo_months}
+        fill_caption()
+
+        edited_total_grupo = st.data_editor(
+            total_df_grupo, use_container_width=True, hide_index=True,
+            column_config=col_config_grupo, key=f"total_grupo_editor_{grupo}",
+        )
+        if st.button("🔀 Ratear pela média histórica entre as lojas e salvar", key=f"rateio_grupo_btn_{grupo}"):
+            ts = now_iso()
+            cur = conn.cursor()
+            n = 0
+            for m in grupo_months:
+                novo_total = edited_total_grupo.iloc[0][m]
+                antigo_total = total_row_grupo[m]
+                if pd.isna(novo_total) or abs(float(novo_total) - antigo_total) < 1e-9:
+                    continue
+                month_rows = sub_proj_grupo[sub_proj_grupo["month_label"] == m]
+                rows_for_redist = [
+                    {"key": (r["chave"], r["produto_codigo"]),
+                     "weight": weights_by_key.get((r["chave"], r["produto_codigo"]), 0)}
+                    for _, r in month_rows.iterrows()
+                ]
+                new_values, ok = redistribute_by_weight(rows_for_redist, float(novo_total))
+                if not ok:
+                    continue
+                month_idx = label_to_month_index[m]
+                for (chave_r, produto_r), new_val in new_values.items():
+                    cur.execute(
+                        "UPDATE projection_values SET current_value = ?, vendor_value = ?, "
+                        "last_changed_level = 'vendedor', last_changed_by = ?, last_changed_at = ? "
+                        "WHERE chave = ? AND produto_codigo = ? AND month_index = ?",
+                        (new_val, new_val, vendedor_nome, ts, chave_r, produto_r, month_idx),
+                    )
+                    n += cur.rowcount
+            conn.commit()
+            st.session_state["flash_msg"] = f"Rateio aplicado para o grupo {grupo} ({n} célula(s))."
+            st.rerun()
+
+        st.divider()
+        st.write("**Lojas do grupo** — marque uma ou mais para detalhar por SKU ou ajustar uma loja específica.")
+
+        loja_month_totals = sub_proj_grupo.pivot_table(
+            index="chave", columns="month_label", values="current_value", aggfunc="sum"
+        ).reindex(columns=grupo_months)
+        loja_table = lojas_grupo.rename(
+            columns={"chave": "Chave", "cliente_nome": "Cliente", "skus": "SKUs", "ultimo_mes": "Último Mês"}
+        ).copy()
+        for m in grupo_months:
+            loja_table[m] = loja_table["Chave"].map(
+                loja_month_totals[m] if m in loja_month_totals.columns else {}
+            )
+        loja_table = loja_table[["Cliente", "Chave", "SKUs", "Último Mês"] + grupo_months].reset_index(drop=True)
+
+        loja_month_fmt = {m: (lambda v: fmt_milhar(v, 1)) for m in grupo_months}
+        loja_table_styled = loja_table.style.format({"Último Mês": fmt_milhar, **loja_month_fmt}, na_rep="-")
+
+        evento_lojas = st.dataframe(
+            loja_table_styled, use_container_width=True, hide_index=True,
+            on_select="rerun", selection_mode="multi-row", key=f"tabela_lojas_{grupo}",
+        )
+        selected_loja_positions = evento_lojas.selection.rows
+        selected_lojas_chaves = (
+            loja_table.iloc[selected_loja_positions]["Chave"].tolist() if selected_loja_positions else []
+        )
+
+        for chave in selected_lojas_chaves:
+            st.divider()
+            render_cliente_detail(chave)
