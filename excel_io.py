@@ -226,9 +226,11 @@ def load_into_db(conn, parsed: dict, cycle_year: int, cycle_month: int):
             media_3m = row["media_6m"]
         else:
             media_3m = 0.0
-        # Venda histórica zero/negativa: não pré-preenche a projeção (fica em branco
-        # até o vendedor preencher manualmente), em vez de sugerir um valor sem base real.
-        valor_inicial = media_3m if media_3m > 0 else None
+        # Só pré-preenche quando o cliente comprou no último mês (há demanda recorrente
+        # para basear a sugestão); quem não comprou fica com projeção zerada até o
+        # vendedor preencher manualmente.
+        comprou_ultimo_mes = pd.notna(row["ultimo_mes"]) and row["ultimo_mes"] > 0
+        valor_inicial = media_3m if comprou_ultimo_mes else 0.0
         for m in range(1, horizon + 1):
             label = month_label_for_cycle(cycle_year, cycle_month, m)
             proj_rows.append(
