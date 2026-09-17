@@ -126,11 +126,15 @@ def render_cliente_detail(chave):
         total_col_config = {m: st.column_config.NumberColumn(fill_label(m), format="%.1f") for m in cliente_months}
         fill_caption()
 
-        edited_total = st.data_editor(
-            total_df, use_container_width=True, hide_index=True,
-            column_config=total_col_config, key=f"total_editor_{chave}",
-        )
-        if st.button("Ratear pela média histórica e salvar", icon=":material/sync_alt:", key=f"rateio_btn_{chave}"):
+        with st.form(key=f"rateio_form_{chave}"):
+            edited_total = st.data_editor(
+                total_df, use_container_width=True, hide_index=True,
+                column_config=total_col_config, key=f"total_editor_{chave}",
+            )
+            rateio_submitted = st.form_submit_button(
+                "Ratear pela média histórica e salvar", icon=":material/sync_alt:",
+            )
+        if rateio_submitted:
             ts = now_iso()
             cur = conn.cursor()
             n = 0
@@ -185,11 +189,13 @@ def render_cliente_detail(chave):
         sku_col_config = {m: st.column_config.NumberColumn(fill_label(m), format="%.1f") for m in cliente_months}
         fill_caption()
 
-        edited_sku = st.data_editor(
-            sku_display, use_container_width=True, hide_index=True,
-            disabled=disabled_sku_cols, column_config=sku_col_config, key=f"sku_editor_{chave}",
-        )
-        if st.button("Salvar valores por SKU", icon=":material/save:", key=f"save_sku_btn_{chave}"):
+        with st.form(key=f"save_sku_form_{chave}"):
+            edited_sku = st.data_editor(
+                sku_display, use_container_width=True, hide_index=True,
+                disabled=disabled_sku_cols, column_config=sku_col_config, key=f"sku_editor_{chave}",
+            )
+            save_sku_submitted = st.form_submit_button("Salvar valores por SKU", icon=":material/save:")
+        if save_sku_submitted:
             ts = now_iso()
             cur = conn.cursor()
             n = 0
@@ -357,14 +363,15 @@ for grupo in selected_grupos:
         col_config_grupo = {m: st.column_config.NumberColumn(fill_label(m), format="%.1f") for m in grupo_months}
         fill_caption()
 
-        edited_total_grupo = st.data_editor(
-            total_df_grupo, use_container_width=True, hide_index=True,
-            column_config=col_config_grupo, key=f"total_grupo_editor_{grupo}",
-        )
-        if st.button(
-            "Ratear pela média histórica entre as lojas e salvar", icon=":material/sync_alt:",
-            key=f"rateio_grupo_btn_{grupo}",
-        ):
+        with st.form(key=f"rateio_grupo_form_{grupo}"):
+            edited_total_grupo = st.data_editor(
+                total_df_grupo, use_container_width=True, hide_index=True,
+                column_config=col_config_grupo, key=f"total_grupo_editor_{grupo}",
+            )
+            rateio_grupo_submitted = st.form_submit_button(
+                "Ratear pela média histórica entre as lojas e salvar", icon=":material/sync_alt:",
+            )
+        if rateio_grupo_submitted:
             ts = now_iso()
             cur = conn.cursor()
             n = 0

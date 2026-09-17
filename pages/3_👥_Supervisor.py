@@ -205,36 +205,37 @@ else:
     st.caption(f"{len(table_display)} linha(s) com projeção mais de 10% abaixo do Último Mês. Edite diretamente na tabela para revisar linha a linha.")
     fill_caption()
     table_display = filter_dataframe(table_display, key="filtro_desvios_supervisor")
-    edited_desvio = st.data_editor(
-        table_display, use_container_width=True, hide_index=True,
-        disabled=disabled_cols, column_config=desvio_column_config, key="desvio_editor_supervisor",
-    )
+    with st.form(key="desvio_form_supervisor"):
+        edited_desvio = st.data_editor(
+            table_display, use_container_width=True, hide_index=True,
+            disabled=disabled_cols, column_config=desvio_column_config, key="desvio_editor_supervisor",
+        )
+        desvio_save_submitted = st.form_submit_button("Salvar revisão manual", icon=":material/save:")
+    if desvio_save_submitted:
+        cur = conn.cursor()
+        n = 0
+        for i, row in edited_desvio.iterrows():
+            original = table_display.iloc[i]
+            chave_r, produto_r = row["Chave"], row["Cód. SKU"]
+            for m in month_cols:
+                key = (chave_r, produto_r, m)
+                if key not in month_idx_map:
+                    continue
+                novo, antigo = row[m], original[m]
+                if pd.notna(novo) and (pd.isna(antigo) or float(novo) != float(antigo)):
+                    month_idx = month_idx_map[key]
+                    cur.execute(
+                        "UPDATE projection_values SET current_value = ?, last_changed_level = 'supervisor', "
+                        "last_changed_by = ?, last_changed_at = ? WHERE chave = ? AND produto_codigo = ? AND month_index = ?",
+                        (float(novo), supervisor_nome, now_iso(), chave_r, produto_r, month_idx),
+                    )
+                    log_audit(cur, chave_r, produto_r, month_idx, antigo, float(novo))
+                    n += 1
+        conn.commit()
+        st.session_state["flash_msg"] = f"Revisão manual salva ({n} célula(s) alterada(s))."
+        st.rerun()
 
-    col_a, col_b, col_c = st.columns(3)
-    with col_a:
-        if st.button("Salvar revisão manual", icon=":material/save:", key="desvio_save"):
-            cur = conn.cursor()
-            n = 0
-            for i, row in edited_desvio.iterrows():
-                original = table_display.iloc[i]
-                chave_r, produto_r = row["Chave"], row["Cód. SKU"]
-                for m in month_cols:
-                    key = (chave_r, produto_r, m)
-                    if key not in month_idx_map:
-                        continue
-                    novo, antigo = row[m], original[m]
-                    if pd.notna(novo) and (pd.isna(antigo) or float(novo) != float(antigo)):
-                        month_idx = month_idx_map[key]
-                        cur.execute(
-                            "UPDATE projection_values SET current_value = ?, last_changed_level = 'supervisor', "
-                            "last_changed_by = ?, last_changed_at = ? WHERE chave = ? AND produto_codigo = ? AND month_index = ?",
-                            (float(novo), supervisor_nome, now_iso(), chave_r, produto_r, month_idx),
-                        )
-                        log_audit(cur, chave_r, produto_r, month_idx, antigo, float(novo))
-                        n += 1
-            conn.commit()
-            st.session_state["flash_msg"] = f"Revisão manual salva ({n} célula(s) alterada(s))."
-            st.rerun()
+    col_b, col_c = st.columns(2)
     with col_b:
         if st.button("Corrigir automaticamente com Média 3M", icon=":material/build:", key="desvio_autofix"):
             cur = conn.cursor()
