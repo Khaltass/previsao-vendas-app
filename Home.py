@@ -109,7 +109,6 @@ supervisor_page = st.Page("pages/3_👥_Supervisor.py", title="Supervisor", icon
 gerente_page = st.Page("pages/4_🏢_Gerente_Regional.py", title="Gerente Regional", icon=":material/corporate_fare:")
 consolidacao_page = st.Page("pages/5_📊_Consolidacao.py", title="Consolidação", icon=":material/bar_chart:")
 status_page = st.Page("pages/6_✅_Status_Envio.py", title="Status de Envio", icon=":material/fact_check:")
-backlog_page = st.Page("pages/7_📋_Backlog.py", title="Backlog", icon=":material/assignment:")
 
 if logged_email and papel:
     # login corporativo com perfil identificado: acesso restrito somente à tela da alçada
@@ -126,10 +125,6 @@ elif logged_email:
 else:
     # sem login corporativo (uso local/administrativo): acesso completo para testes
     pages = [home_page, upload_page, vendedor_page, supervisor_page, gerente_page, consolidacao_page, status_page]
-
-# Backlog de melhorias: fica disponível em qualquer modo de acesso, já que não
-# depende da planilha carregada nem do perfil (é uma ferramenta de gestão do próprio app).
-pages = pages + [backlog_page]
 
 pg = st.navigation(pages)
 pg.run()

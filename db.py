@@ -114,16 +114,6 @@ CREATE TABLE IF NOT EXISTS submission_status (
     UNIQUE (level, scope_codigo)
 );
 
-CREATE TABLE IF NOT EXISTS backlog_items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    titulo TEXT,
-    descricao TEXT,
-    prioridade TEXT DEFAULT 'Média',
-    status TEXT DEFAULT 'Pendente',
-    criado_por TEXT,
-    criado_em TEXT,
-    atualizado_em TEXT
-);
 """
 
 # Igual ao schema SQLite, exceto id INTEGER PRIMARY KEY AUTOINCREMENT -> SERIAL PRIMARY KEY
@@ -224,16 +214,6 @@ CREATE TABLE IF NOT EXISTS submission_status (
     UNIQUE (level, scope_codigo)
 );
 
-CREATE TABLE IF NOT EXISTS backlog_items (
-    id SERIAL PRIMARY KEY,
-    titulo TEXT,
-    descricao TEXT,
-    prioridade TEXT DEFAULT 'Média',
-    status TEXT DEFAULT 'Pendente',
-    criado_por TEXT,
-    criado_em TEXT,
-    atualizado_em TEXT
-);
 """
 
 
