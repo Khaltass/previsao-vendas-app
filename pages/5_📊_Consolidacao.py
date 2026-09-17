@@ -3,7 +3,7 @@ import pandas as pd
 import streamlit as st
 
 from db import init_db, has_data
-from models import is_deviation
+from models import is_deviation, reference_volume
 from ui_helpers import filter_dataframe, fmt_milhar, apply_theme
 
 apply_theme()
@@ -20,7 +20,7 @@ st.caption("Visão consolidada de **todos** os vendedores, supervisores e gerent
 
 volumes = pd.read_sql_query(
     "SELECT chave, cliente_nome, regional_descricao, supervisor_nome, grupo_descricao, "
-    "vendedor_codigo, vendedor_nome, produto_codigo, produto_descricao, ultimo_mes FROM volumes",
+    "vendedor_codigo, vendedor_nome, produto_codigo, produto_descricao, media_3m, media_6m, ultimo_mes FROM volumes",
     conn,
 )
 proj = pd.read_sql_query(
@@ -29,7 +29,9 @@ proj = pd.read_sql_query(
 )
 
 merged = volumes.merge(proj, on=["chave", "produto_codigo"])
-merged["Desvio"] = merged.apply(lambda r: is_deviation(r["current_value"], r["ultimo_mes"]), axis=1)
+merged["Desvio"] = merged.apply(
+    lambda r: is_deviation(r["current_value"], reference_volume(r["media_3m"], r["media_6m"])), axis=1
+)
 month_order_map = dict(merged[["month_label", "month_index"]].drop_duplicates().values)
 
 manual = pd.read_sql_query(

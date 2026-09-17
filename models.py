@@ -58,18 +58,29 @@ def fmt_kg(value) -> str:
     return f"{value:.0f} kg"
 
 
-def is_deviation(projected, ultimo_mes) -> bool:
-    """True quando o volume projetado é mais de 10% inferior ao último mês realizado."""
-    if projected is None or ultimo_mes is None:
+def reference_volume(media_3m, media_6m):
+    """Volume de referência para desvio/rateio: média de 3 meses, com fallback para a
+    média de 6 meses quando a de 3 não existir (mesma convenção usada no rateio)."""
+    m3 = _safe_num(media_3m)
+    if m3 > 0:
+        return m3
+    m6 = _safe_num(media_6m)
+    return m6 if m6 > 0 else None
+
+
+def is_deviation(projected, referencia) -> bool:
+    """True quando o volume projetado é mais de 10% inferior à referência (média de
+    3 meses, com fallback para a de 6 meses — ver `reference_volume`)."""
+    if projected is None or referencia is None:
         return False
     try:
         projected = float(projected)
-        ultimo_mes = float(ultimo_mes)
+        referencia = float(referencia)
     except (TypeError, ValueError):
         return False
-    if ultimo_mes <= 0:
+    if referencia <= 0:
         return False
-    return projected < DEVIATION_THRESHOLD * ultimo_mes
+    return projected < DEVIATION_THRESHOLD * referencia
 
 
 def _safe_num(value) -> float:

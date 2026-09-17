@@ -2,7 +2,7 @@ import pandas as pd
 import streamlit as st
 
 from db import init_db, now_iso
-from models import is_deviation, redistribute_proportional
+from models import is_deviation, reference_volume, redistribute_proportional
 from ui_helpers import filter_dataframe, fmt_milhar, fill_label, fill_caption, apply_theme
 
 apply_theme()
@@ -94,7 +94,9 @@ proj = pd.read_sql_query(
 )
 
 merged = volumes.merge(proj, on=["chave", "produto_codigo"])
-merged["Desvio"] = merged.apply(lambda r: is_deviation(r["current_value"], r["ultimo_mes"]), axis=1)
+merged["Desvio"] = merged.apply(
+    lambda r: is_deviation(r["current_value"], reference_volume(r["media_3m"], r["media_6m"])), axis=1
+)
 # só entra na revisão de desvios quem ainda não foi corrigido por supervisor/gerente
 merged["_pendente"] = merged["Desvio"] & (merged["last_changed_level"] == "vendedor")
 
@@ -202,7 +204,7 @@ else:
     disabled_cols = [c for c in table_display.columns if c not in month_cols]
     desvio_column_config = {m: st.column_config.NumberColumn(fill_label(m), format="%.1f") for m in month_cols}
 
-    st.caption(f"{len(table_display)} linha(s) com projeção mais de 10% abaixo do Último Mês. Edite diretamente na tabela para revisar linha a linha.")
+    st.caption(f"{len(table_display)} linha(s) com projeção mais de 10% abaixo da Média 3M (ou 6M, na ausência da 3M). Edite diretamente na tabela para revisar linha a linha.")
     fill_caption()
     table_display = filter_dataframe(table_display, key="filtro_desvios_supervisor")
     with st.form(key="desvio_form_supervisor"):
@@ -244,13 +246,13 @@ else:
                 media3 = row["media_3m"]
                 if pd.isna(media3):
                     continue
-                ultimo = row["ultimo_mes"]
+                referencia = reference_volume(row["media_3m"], row["media_6m"])
                 for m in month_cols:
                     key = (row["chave"], row["produto_codigo"], m)
                     if key not in month_idx_map:
                         continue
                     antigo = row[m]
-                    if not is_deviation(antigo, ultimo):
+                    if not is_deviation(antigo, referencia):
                         continue
                     month_idx = month_idx_map[key]
                     mudou = pd.isna(antigo) or float(antigo) != float(media3)
@@ -273,12 +275,13 @@ else:
                 ultimo = row["ultimo_mes"]
                 if pd.isna(ultimo):
                     continue
+                referencia = reference_volume(row["media_3m"], row["media_6m"])
                 for m in month_cols:
                     key = (row["chave"], row["produto_codigo"], m)
                     if key not in month_idx_map:
                         continue
                     antigo = row[m]
-                    if not is_deviation(antigo, ultimo):
+                    if not is_deviation(antigo, referencia):
                         continue
                     month_idx = month_idx_map[key]
                     mudou = pd.isna(antigo) or float(antigo) != float(ultimo)

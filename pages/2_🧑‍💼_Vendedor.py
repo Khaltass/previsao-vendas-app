@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from db import init_db, now_iso, get_config
-from models import is_deviation, redistribute_by_weight, horizon_for_family, month_label_for_cycle
+from models import is_deviation, reference_volume, redistribute_by_weight, horizon_for_family, month_label_for_cycle
 from ui_helpers import fmt_milhar, fill_label, fill_caption, apply_theme
 
 apply_theme()
@@ -173,7 +173,10 @@ def render_cliente_detail(chave):
             ["grupo_descricao", "produto_descricao", "media_3m", "media_6m", "minimo", "maximo", "ultimo_mes"]
         ].join(sku_pivot)
         sku_raw["Desvio"] = sku_raw.apply(
-            lambda r: "⚠" if any(is_deviation(r[m], r["ultimo_mes"]) for m in cliente_months if pd.notna(r[m])) else "",
+            lambda r: "⚠" if any(
+                is_deviation(r[m], reference_volume(r["media_3m"], r["media_6m"]))
+                for m in cliente_months if pd.notna(r[m])
+            ) else "",
             axis=1,
         )
 
